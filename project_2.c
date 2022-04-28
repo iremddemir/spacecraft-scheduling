@@ -7,7 +7,8 @@ float p = 0.2;// probability of a ground job (launch & assembly)
 
 //time related variables
 struct timeval start_time;
-strutct timeval current_time;
+struct timeval current_time;
+struct timeval current_time_ct;
 long start_sc;
 long end_sc;
 //logging file
@@ -113,5 +114,16 @@ void* AssemblyJob(void *arg){
 
 // the function that controls the air traffic
 void* ControlTower(void *arg){
+    //first aircraft mutex wait
+    gettimeofday(&current_time_ct, NULL);
+    while(current_time_ac < end_sc){
+    //TODO: if waiting for the land do it priorily
+        
+    //TODO: else if launch from pad a
+    //TODO: else if assembly in pad b
+    //update time
+    gettimeofday(&current_time_ct, NULL);
+    }
+    
 
 }
