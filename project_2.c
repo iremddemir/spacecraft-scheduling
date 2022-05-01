@@ -11,9 +11,15 @@ struct timeval current_time;
 struct timeval current_time_ct;
 long start_sc;
 long end_sc;
+
+//job queues:
+Queue* launch_queue;
+Queue* land_queue;
+Queue* assembly_queue;
+
 //logging file
 FILE *events_log;
-void* LandingJob(void *arg); 
+void* LandingJob(void *arg);
 void* LaunchJob(void *arg);
 void* EmergencyJob(void *arg); 
 void* AssemblyJob(void *arg); 
@@ -62,7 +68,7 @@ int main(int argc,char **argv){
     gettimeofday(&start_time, NULL);
     start_sc = (long) start_time.tv_sec;
     end_sc = start_sc + simulationTime;
-    srand(seed); // feed the seed
+    srand(seed) //feed the seed
     
     //logging
     events_log = fopen("./events.log", "w");
@@ -77,29 +83,64 @@ int main(int argc,char **argv){
         Job ret = Dequeue(myQ);
         DestructQueue(myQ);
     */
-    //TODO: Initialize locks, threads etx
+    //TODO: Initialize queues for each job type
+    launch_queue = ConstructQueue(1000);
+    land_queue = ConstructQueue(1000);
+    assembly_queue = ConstructQueue(1000);
+    //TODO: Create Control Tower Thread
+    pthread_t ct_thread;
+    //MAYBE we can pass current_time here to Control Tower but not it calculates its own
+    //to do that just change NULL at the end as a void pointer to desired val
+    pthread_create(&ct_thread, NULL, ControlTower,NULL);
     
     //MAIN LOOP
+    //create a random variable and create landing/departure/assembly jobs wrt to that
     while(current_time.tv_sec < end_sc){
         //TODO: creating, serving requests
+        rand_p = (double)rand() / (double) RAND_MAX;
         
+        //WE CAN ADD MORE ARGUMENTS IF WE NEED ONLY THING FOR SURE IS THE CURRENT TIME NOW 
+        //create assembly w/ probability = p/2
+        if (rand_p< p/2){
+            LandingJob(current_time);
+        }
+        //create launch w/ probability = p/2
+        else if(rand_p <p){
+            LaunchJob(current_time);
+        }
+        //create assembly w/ probability = 1-p
+        else{
+            AssemblyJob(current_time);
+        }
+
+        
+        //t=2 as given in instructions
+        pthread_sleep(2);
         //update current time
         gettimeofday(&current_time, NULL);
     }
 
     // your code goes here
-
+    fclose(events_log);
     return 0;
 }
 
+//TYPES: LAND -> 1, LAUNCH -> 2 ASSEMBLY -> 3 (could not find in doc so maybe we can decide)
+//FIGURE OUT IDs
 // the function that creates plane threads for landing
 void* LandingJob(void *arg){
-
+    Job landing;
+   landing.ID = myID;
+    landing.type = 1;
+    Enqueue(land_queue, landing);
 }
 
 // the function that creates plane threads for departure
 void* LaunchJob(void *arg){
-
+    Job launching;
+    launching.ID = myID;
+    launching.type = 2;
+    Enqueue(launch_queue, launching);
 }
 
 // the function that creates plane threads for emergency landing
@@ -109,7 +150,10 @@ void* EmergencyJob(void *arg){
 
 // the function that creates plane threads for emergency landing
 void* AssemblyJob(void *arg){
-
+    Job assembly;
+    assembly.ID = myID;
+    assembly.type = 3;
+    Enqueue(assembly_queue, assembly);
 }
 
 // the function that controls the air traffic

@@ -8,6 +8,8 @@ typedef struct {
     int ID;
     int type;
     // you might want to add variables here!
+    int request_time;
+    
 } Job;
 
 /* a link in the queue, holds the data and point to the next Node */
