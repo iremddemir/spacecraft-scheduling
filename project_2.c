@@ -18,13 +18,23 @@ long end_sc;
 Queue* launch_queue;
 Queue* land_queue;
 Queue* assembly_queue;
-
+//global variable for unique IDs
+int JobID = 0 ;
+int NextJobID;
+//locks, cond variable, mutexes etc
+pthread_mutex_t id_mutex =PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t ct_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t id_cv = PTHREAD_COND_INITIALIZER;
 //logging file
 FILE *events_log;
+//functions
 void* LandingJob(struct timeval current);
+void* LandingJobT(void *arg);
 void* LaunchJob(struct timeval current);
+void* LaunchJobT(void *arg);
 void* EmergencyJob(void *arg);
 void* AssemblyJob(struct timeval current);
+void* AssemblyJobT(void *arg);
 void* ControlTower(void *arg);
 /*
 void* LandingJob(void *arg);
@@ -137,19 +147,56 @@ int main(int argc,char **argv){
 //TYPES: LAND -> 1, LAUNCH -> 2 ASSEMBLY -> 3 (could not find in doc so maybe we can decide)
 //FIGURE OUT IDs
 // the function that creates plane threads for landing
+//padA-B
 void* LandingJob(struct timeval current){
     Job landing;
-    //landing.ID = myID;
+    pthread_mutex_lock(&id_mutex);
+    landing.ID = JobID++;
+    pthread_mutex_unlock(&id_mutex);
     landing.type = 1;
+    landing.request_time = current;
     Enqueue(land_queue, landing);
+    //create the thread that has a LandingJobT function as main
+    int id = landing.ID;
+    pthread_t landing_thread;
+    pthread_create(&landing_thread, NULL, LandingJobT,(void *)(&id));
+  
+}
+
+void* LandingJobT(void *arg){
+    int job_id = *((int *) arg);
+    // wait for air traffic controller
+    pthread_mutex_lock(&ct_mutex);
+    while (NextJobID != job_id) {
+        pthread_cond_wait(&id_cv, &ct_mutex);
+    }
+    pthread_mutex_unlock(&ct_mutex);
+    pthread_exit(NULL);
 }
 
 // the function that creates plane threads for departure
+//pad A
 void* LaunchJob(struct timeval current){
     Job launching;
-    //launching.ID = myID;
+    pthread_mutex_lock(&id_mutex);
+    launching.ID = JobID++;
+    pthread_mutex_unlock(&id_mutex);
     launching.type = 2;
+    launching.request_time = current;
     Enqueue(launch_queue, launching);
+    int id = launching.ID;
+    pthread_t launch_thread;
+    pthread_create(&launch_thread, NULL, LaunchJobT,(void *)(&id));
+}
+void* LaunchJobT(void *arg){
+    int job_id = *((int *) arg);
+    // wait for air traffic controller
+    pthread_mutex_lock(&ct_mutex);
+    while (NextJobID != job_id) {
+        pthread_cond_wait(&id_cv, &ct_mutex);
+    }
+    pthread_mutex_unlock(&ct_mutex);
+    pthread_exit(NULL);
 }
 
 // the function that creates plane threads for emergency landing
@@ -157,12 +204,20 @@ void* EmergencyJob(void *arg){
 
 }
 
-// the function that creates plane threads for emergency landing
+// the function that creates plane threads for emergency landing (padB)
 void* AssemblyJob(struct timeval current){
     Job assembly;
-    //assembly.ID = myID;
+    pthread_mutex_lock(&id_mutex);
+    assembly.ID = JobID++;
+    pthread_mutex_unlock(&id_mutex);
     assembly.type = 3;
+    assembly.request_time = current;
     Enqueue(assembly_queue, assembly);
+    pthread_t assembly_thread;
+    pthread_create(&assembly_thread, NULL, AssemblyJobT,NULL);
+}
+void* AssemblyJobT(void *arg){
+  
 }
 
 // the function that controls the air traffic

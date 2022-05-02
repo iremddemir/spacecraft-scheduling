@@ -8,7 +8,7 @@ typedef struct {
     int ID;
     int type;
     // you might want to add variables here!
-    int request_time;
+    struct timeval request_time;
     
 } Job;
 
