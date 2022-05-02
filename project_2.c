@@ -1,5 +1,7 @@
 #include "queue.c"
 #include <sys/time.h>
+#include <pthread.h>
+#include <string.h>
 int simulationTime = 120;    // simulation time
 int seed = 10;               // seed for randomness
 int emergencyFrequency = 40; // frequency of emergency
@@ -19,12 +21,18 @@ Queue* assembly_queue;
 
 //logging file
 FILE *events_log;
+void* LandingJob(struct timeval current);
+void* LaunchJob(struct timeval current);
+void* EmergencyJob(void *arg);
+void* AssemblyJob(struct timeval current);
+void* ControlTower(void *arg);
+/*
 void* LandingJob(void *arg);
 void* LaunchJob(void *arg);
-void* EmergencyJob(void *arg); 
-void* AssemblyJob(void *arg); 
-void* ControlTower(void *arg); 
-
+void* EmergencyJob(void *arg);
+void* AssemblyJob(void *arg);
+void* ControlTower(void *arg);
+*/
 // pthread sleeper function
 int pthread_sleep (int seconds)
 {
@@ -68,7 +76,7 @@ int main(int argc,char **argv){
     gettimeofday(&start_time, NULL);
     start_sc = (long) start_time.tv_sec;
     end_sc = start_sc + simulationTime;
-    srand(seed) //feed the seed
+    srand(seed); //feed the seed
     
     //logging
     events_log = fopen("./events.log", "w");
@@ -95,11 +103,12 @@ int main(int argc,char **argv){
     
     //MAIN LOOP
     //create a random variable and create landing/departure/assembly jobs wrt to that
+    double rand_p;
     while(current_time.tv_sec < end_sc){
         //TODO: creating, serving requests
         rand_p = (double)rand() / (double) RAND_MAX;
         
-        //WE CAN ADD MORE ARGUMENTS IF WE NEED ONLY THING FOR SURE IS THE CURRENT TIME NOW 
+        //WE CAN ADD MORE ARGUMENTS IF WE NEED ONLY THING FOR SURE IS THE CURRENT TIME NOW
         //create assembly w/ probability = p/2
         if (rand_p< p/2){
             LandingJob(current_time);
@@ -128,17 +137,17 @@ int main(int argc,char **argv){
 //TYPES: LAND -> 1, LAUNCH -> 2 ASSEMBLY -> 3 (could not find in doc so maybe we can decide)
 //FIGURE OUT IDs
 // the function that creates plane threads for landing
-void* LandingJob(void *arg){
+void* LandingJob(struct timeval current){
     Job landing;
-   landing.ID = myID;
+    //landing.ID = myID;
     landing.type = 1;
     Enqueue(land_queue, landing);
 }
 
 // the function that creates plane threads for departure
-void* LaunchJob(void *arg){
+void* LaunchJob(struct timeval current){
     Job launching;
-    launching.ID = myID;
+    //launching.ID = myID;
     launching.type = 2;
     Enqueue(launch_queue, launching);
 }
@@ -149,9 +158,9 @@ void* EmergencyJob(void *arg){
 }
 
 // the function that creates plane threads for emergency landing
-void* AssemblyJob(void *arg){
+void* AssemblyJob(struct timeval current){
     Job assembly;
-    assembly.ID = myID;
+    //assembly.ID = myID;
     assembly.type = 3;
     Enqueue(assembly_queue, assembly);
 }
@@ -160,7 +169,7 @@ void* AssemblyJob(void *arg){
 void* ControlTower(void *arg){
     //first aircraft mutex wait
     gettimeofday(&current_time_ct, NULL);
-    while(current_time_ac < end_sc){
+    while(current_time_ct.tv_sec < end_sc){
     //TODO: if waiting for the land do it priorily
         
     //TODO: else if launch from pad a
