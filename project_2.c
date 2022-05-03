@@ -111,7 +111,8 @@ int main(int argc,char **argv){
     land_queue = ConstructQueue(1000);
     assembly_queue = ConstructQueue(1000);
     //create first launch job given in the instructions
-    
+    pthread_mutex_lock(&first_job_launch_mutex);
+    LaunchJob(current_time);
     //TODO: Create Control Tower Thread
     pthread_t ct_thread;
     //MAYBE we can pass current_time here to Control Tower but not it calculates its own
@@ -128,13 +129,13 @@ int main(int argc,char **argv){
         //WE CAN ADD MORE ARGUMENTS IF WE NEED ONLY THING FOR SURE IS THE CURRENT TIME NOW
         //create assembly w/ probability = p/2
         if (rand_p< p/2){
-            //AssemblyJob(current_time);
+            AssemblyJob(current_time);
         }
         //create launch w/ probability = p/2
         else if(rand_p <p){
             LaunchJob(current_time);
         }
-        //create assembly w/ probability = 1-p
+        //create landing w/ probability = 1-p
         
         else{
             LandingJob(current_time);
@@ -178,6 +179,8 @@ void* LandingJobT(void *arg){
     while (NextJobID != job_id) {
         pthread_cond_wait(&id_cv, &ct_mutex);
     }
+    //it takes t = 2sc
+    pthread_sleep(2);
     pthread_mutex_unlock(&ct_mutex);
     pthread_exit(NULL);
 }
@@ -198,11 +201,15 @@ void* LaunchJob(struct timeval current){
 }
 void* LaunchJobT(void *arg){
     int job_id = *((int *) arg);
-    // wait for air traffic controller
+    if (job_id == 0){
+      pthread_mutex_unlock(&first_job_launch_mutex);
+    }
     pthread_mutex_lock(&ct_mutex);
     while (NextJobID != job_id) {
         pthread_cond_wait(&id_cv, &ct_mutex);
     }
+    //it takes 2*t = 4sc
+    pthread_sleep(4);
     pthread_mutex_unlock(&ct_mutex);
     pthread_exit(NULL);
 }
@@ -225,12 +232,20 @@ void* AssemblyJob(struct timeval current){
     pthread_create(&assembly_thread, NULL, AssemblyJobT,NULL);
 }
 void* AssemblyJobT(void *arg){
-  
+      int job_id = *((int *) arg);
+      pthread_mutex_lock(&ct_mutex);
+      while (NextJobID != job_id) {
+        pthread_cond_wait(&id_cv, &ct_mutex);
+      }
+      //it takes 6*t = 12sc
+      pthread_sleep(12);
+      pthread_mutex_unlock(&ct_mutex);
+      pthread_exit(NULL);
 }
 
 // the function that controls the air traffic
 void* ControlTower(void *arg){
-    //first aircraft mutex wait
+    pthread_mutex_lock(&first_job_launch_mutex);
     gettimeofday(&current_time_ct, NULL);
     while(current_time_ct.tv_sec < end_sc){
     //TODO: if waiting for the land do it priorily
@@ -240,6 +255,7 @@ void* ControlTower(void *arg){
       pthread_mutex_unlock(&pop_mutex);
       NextJobID = popped_job.ID;
       //fprintf(events_log,"Land is not empty so we popped id: %d at time %ld \n ", NextJobID, current_time_ct.tv_sec);
+      pthread_cond_broadcast(&id_cv);
       fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
       popped_job.ID,
       'L',
@@ -248,7 +264,6 @@ void* ControlTower(void *arg){
                     current_time_ct.tv_sec - popped_job.request_time.tv_sec + 1,
             'A');
       //to illustrate that it takes 1 sc to land (why here or can we add this to another place?)
-      pthread_sleep(1);
     }
     //TODO: else if launch from pad a
     else if (!isEmpty(launch_queue)){
@@ -257,6 +272,7 @@ void* ControlTower(void *arg){
       pthread_mutex_unlock(&pop_mutex);
       NextJobID = popped_job.ID;
       //fprintf(events_log,"Land is empty so we popped id: %d from launch at time %ld\n", NextJobID, current_time_ct.tv_sec);
+      pthread_cond_broadcast(&id_cv);
       fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
       popped_job.ID,
       'D',
@@ -264,13 +280,11 @@ void* ControlTower(void *arg){
                     current_time_ct.tv_sec - start_time.tv_sec + 2,
                     current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
             'A');
-      //to illustrate that it takes 2 sc to land (why here or can we add this to another place?)
-      pthread_sleep(2);
     }
     //TODO: else if assembly in pad b
     //update time
     gettimeofday(&current_time_ct, NULL);
     }
     
-
+ pthread_exit(NULL);
 }
