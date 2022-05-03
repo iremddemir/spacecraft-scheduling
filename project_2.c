@@ -2,6 +2,9 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <string.h>
+#include <time.h>
+#include <stdlib.h>
+#include <unistd.h>
 int simulationTime = 120;    // simulation time
 int seed = 10;               // seed for randomness
 int emergencyFrequency = 40; // frequency of emergency
@@ -24,6 +27,8 @@ int NextJobID;
 //locks, cond variable, mutexes etc
 pthread_mutex_t id_mutex =PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ct_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t pop_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t first_job_launch_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t id_cv = PTHREAD_COND_INITIALIZER;
 //logging file
 FILE *events_log;
@@ -91,7 +96,7 @@ int main(int argc,char **argv){
     //logging
     events_log = fopen("./events.log", "w");
     fprintf(events_log, "EventID\tStatus\tRequest Time\tEnd Time\tTurnaround Time\tPad\n");
-    
+
     /* Queue usage example
         Queue *myQ = ConstructQueue(1000);
         Job j;
@@ -105,6 +110,8 @@ int main(int argc,char **argv){
     launch_queue = ConstructQueue(1000);
     land_queue = ConstructQueue(1000);
     assembly_queue = ConstructQueue(1000);
+    //create first launch job given in the instructions
+    
     //TODO: Create Control Tower Thread
     pthread_t ct_thread;
     //MAYBE we can pass current_time here to Control Tower but not it calculates its own
@@ -121,15 +128,16 @@ int main(int argc,char **argv){
         //WE CAN ADD MORE ARGUMENTS IF WE NEED ONLY THING FOR SURE IS THE CURRENT TIME NOW
         //create assembly w/ probability = p/2
         if (rand_p< p/2){
-            LandingJob(current_time);
+            //AssemblyJob(current_time);
         }
         //create launch w/ probability = p/2
         else if(rand_p <p){
             LaunchJob(current_time);
         }
         //create assembly w/ probability = 1-p
+        
         else{
-            AssemblyJob(current_time);
+            LandingJob(current_time);
         }
 
         
@@ -226,8 +234,39 @@ void* ControlTower(void *arg){
     gettimeofday(&current_time_ct, NULL);
     while(current_time_ct.tv_sec < end_sc){
     //TODO: if waiting for the land do it priorily
-        
+    if (!isEmpty(land_queue)){
+      pthread_mutex_lock(&pop_mutex);
+      Job popped_job = Dequeue(land_queue);
+      pthread_mutex_unlock(&pop_mutex);
+      NextJobID = popped_job.ID;
+      //fprintf(events_log,"Land is not empty so we popped id: %d at time %ld \n ", NextJobID, current_time_ct.tv_sec);
+      fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+      popped_job.ID,
+      'L',
+      popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 1,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 1,
+            'A');
+      //to illustrate that it takes 1 sc to land (why here or can we add this to another place?)
+      pthread_sleep(1);
+    }
     //TODO: else if launch from pad a
+    else if (!isEmpty(launch_queue)){
+      pthread_mutex_lock(&pop_mutex);
+      Job popped_job = Dequeue(launch_queue);
+      pthread_mutex_unlock(&pop_mutex);
+      NextJobID = popped_job.ID;
+      //fprintf(events_log,"Land is empty so we popped id: %d from launch at time %ld\n", NextJobID, current_time_ct.tv_sec);
+      fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+      popped_job.ID,
+      'D',
+      popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 2,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
+            'A');
+      //to illustrate that it takes 2 sc to land (why here or can we add this to another place?)
+      pthread_sleep(2);
+    }
     //TODO: else if assembly in pad b
     //update time
     gettimeofday(&current_time_ct, NULL);
