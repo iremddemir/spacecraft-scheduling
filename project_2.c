@@ -21,15 +21,26 @@ long end_sc;
 Queue* launch_queue;
 Queue* land_queue;
 Queue* assembly_queue;
+Queue* padA_queue;
+Queue* padB_queue;
 //global variable for unique IDs
 int JobID = 0 ;
 int NextJobID;
+int NextJobID_A;
+int NextJobID_B;
 //locks, cond variable, mutexes etc
-pthread_mutex_t id_mutex =PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t padA_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t padB_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t id_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t land_queue_mutex =PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t launch_queue_mutex =PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t assembly_queue_mutex =PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ct_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t pop_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t first_job_launch_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t id_cv = PTHREAD_COND_INITIALIZER;
+pthread_cond_t launch_id_cv = PTHREAD_COND_INITIALIZER;
+pthread_cond_t land_id_cv = PTHREAD_COND_INITIALIZER;
+pthread_cond_t assembly_id_cv = PTHREAD_COND_INITIALIZER;
 //logging file
 FILE *events_log;
 //functions
@@ -41,6 +52,8 @@ void* EmergencyJob(void *arg);
 void* AssemblyJob(struct timeval current);
 void* AssemblyJobT(void *arg);
 void* ControlTower(void *arg);
+void* PadA(void *arg);
+void* PadB(void *arg);
 /*
 void* LandingJob(void *arg);
 void* LaunchJob(void *arg);
@@ -106,19 +119,20 @@ int main(int argc,char **argv){
         Job ret = Dequeue(myQ);
         DestructQueue(myQ);
     */
-    //TODO: Initialize queues for each job type
+    //Initialize queues for each job type
     launch_queue = ConstructQueue(1000);
     land_queue = ConstructQueue(1000);
     assembly_queue = ConstructQueue(1000);
+    padA_queue = ConstructQueue(100);
+    padB_queue = ConstructQueue(100);
     //create first launch job given in the instructions
     pthread_mutex_lock(&first_job_launch_mutex);
     LaunchJob(current_time);
-    //TODO: Create Control Tower Thread
+    //Create Control Tower
     pthread_t ct_thread;
     //MAYBE we can pass current_time here to Control Tower but not it calculates its own
     //to do that just change NULL at the end as a void pointer to desired val
     pthread_create(&ct_thread, NULL, ControlTower,NULL);
-    
     //MAIN LOOP
     //create a random variable and create landing/departure/assembly jobs wrt to that
     double rand_p;
@@ -164,7 +178,9 @@ void* LandingJob(struct timeval current){
     pthread_mutex_unlock(&id_mutex);
     landing.type = 1;
     landing.request_time = current;
+    pthread_mutex_lock(&land_queue_mutex);
     Enqueue(land_queue, landing);
+    pthread_mutex_unlock(&land_queue_mutex);
     //create the thread that has a LandingJobT function as main
     int id = landing.ID;
     pthread_t landing_thread;
@@ -175,11 +191,22 @@ void* LandingJob(struct timeval current){
 void* LandingJobT(void *arg){
     int job_id = *((int *) arg);
     // wait for air traffic controller
+    
     pthread_mutex_lock(&ct_mutex);
-    while (NextJobID != job_id) {
+    while (NextJobID_A != job_id || NextJobID_B != job_id) {
         pthread_cond_wait(&id_cv, &ct_mutex);
     }
     //it takes t = 2sc
+    if (NextJobID_A == job_id){
+      pthread_mutex_lock(&padA_mutex);
+      Dequeue(padA_queue);
+      pthread_mutex_unlock(&padA_mutex);
+    }
+      if (NextJobID_B == job_id){
+      pthread_mutex_lock(&padB_mutex);
+      Dequeue(padB_queue);
+      pthread_mutex_unlock(&padB_mutex);
+    }
     pthread_sleep(2);
     pthread_mutex_unlock(&ct_mutex);
     pthread_exit(NULL);
@@ -194,22 +221,28 @@ void* LaunchJob(struct timeval current){
     pthread_mutex_unlock(&id_mutex);
     launching.type = 2;
     launching.request_time = current;
+    pthread_mutex_lock(&launch_queue_mutex);
     Enqueue(launch_queue, launching);
+    pthread_mutex_unlock(&launch_queue_mutex);
     int id = launching.ID;
     pthread_t launch_thread;
     pthread_create(&launch_thread, NULL, LaunchJobT,(void *)(&id));
 }
 void* LaunchJobT(void *arg){
+  
     int job_id = *((int *) arg);
     if (job_id == 0){
       pthread_mutex_unlock(&first_job_launch_mutex);
     }
     pthread_mutex_lock(&ct_mutex);
-    while (NextJobID != job_id) {
+    while (NextJobID_A != job_id) {
         pthread_cond_wait(&id_cv, &ct_mutex);
     }
     //it takes 2*t = 4sc
     pthread_sleep(4);
+    pthread_mutex_lock(&padA_mutex);
+    Dequeue(padA_queue);
+    pthread_mutex_unlock(&padA_mutex);
     pthread_mutex_unlock(&ct_mutex);
     pthread_exit(NULL);
 }
@@ -227,64 +260,178 @@ void* AssemblyJob(struct timeval current){
     pthread_mutex_unlock(&id_mutex);
     assembly.type = 3;
     assembly.request_time = current;
+    pthread_mutex_lock(&assembly_queue_mutex);
     Enqueue(assembly_queue, assembly);
+    pthread_mutex_unlock(&assembly_queue_mutex);
+    int id = assembly.ID;
     pthread_t assembly_thread;
-    pthread_create(&assembly_thread, NULL, AssemblyJobT,NULL);
+    pthread_create(&assembly_thread, NULL, AssemblyJobT,(void *)(&id));
 }
 void* AssemblyJobT(void *arg){
       int job_id = *((int *) arg);
       pthread_mutex_lock(&ct_mutex);
-      while (NextJobID != job_id) {
+      while (NextJobID_B != job_id) {
         pthread_cond_wait(&id_cv, &ct_mutex);
       }
       //it takes 6*t = 12sc
       pthread_sleep(12);
+      pthread_mutex_lock(&padA_mutex);
+      Dequeue(padB_queue);
+      pthread_mutex_unlock(&padB_mutex);
       pthread_mutex_unlock(&ct_mutex);
       pthread_exit(NULL);
 }
 
-// the function that controls the air traffic
+
 void* ControlTower(void *arg){
     pthread_mutex_lock(&first_job_launch_mutex);
     gettimeofday(&current_time_ct, NULL);
     while(current_time_ct.tv_sec < end_sc){
-    //TODO: if waiting for the land do it priorily
-    if (!isEmpty(land_queue)){
-      pthread_mutex_lock(&pop_mutex);
-      Job popped_job = Dequeue(land_queue);
-      pthread_mutex_unlock(&pop_mutex);
-      NextJobID = popped_job.ID;
-      //fprintf(events_log,"Land is not empty so we popped id: %d at time %ld \n ", NextJobID, current_time_ct.tv_sec);
-      pthread_cond_broadcast(&id_cv);
-      fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
-      popped_job.ID,
-      'L',
-      popped_job.request_time.tv_sec - start_time.tv_sec,
-                    current_time_ct.tv_sec - start_time.tv_sec + 1,
-                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 1,
+        if (!isEmpty(land_queue)){
+          if(isEmpty(padA_queue) && !isEmpty(padB_queue)){
+            fprintf(events_log, "pad A empty B is not\n");
+            pthread_mutex_lock(&land_queue_mutex);
+            Job popped_job = Dequeue(land_queue);
+            pthread_mutex_unlock(&land_queue_mutex);
+            pthread_mutex_lock(&padA_mutex);
+            Enqueue(padA_queue, popped_job);
+            pthread_mutex_unlock(&padA_mutex);
+            NextJobID_A = popped_job.ID;
+            pthread_cond_broadcast(&id_cv);
+            fprintf(events_log,  "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+            popped_job.ID,
+            'L',
+            popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 2,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
             'A');
-      //to illustrate that it takes 1 sc to land (why here or can we add this to another place?)
-    }
-    //TODO: else if launch from pad a
-    else if (!isEmpty(launch_queue)){
-      pthread_mutex_lock(&pop_mutex);
-      Job popped_job = Dequeue(launch_queue);
-      pthread_mutex_unlock(&pop_mutex);
-      NextJobID = popped_job.ID;
-      //fprintf(events_log,"Land is empty so we popped id: %d from launch at time %ld\n", NextJobID, current_time_ct.tv_sec);
+          }
+          else if(!isEmpty(padA_queue) && isEmpty(padB_queue)){
+            pthread_mutex_lock(&land_queue_mutex);
+            Job popped_job = Dequeue(land_queue);
+            pthread_mutex_unlock(&land_queue_mutex);
+            pthread_mutex_lock(&padB_mutex);
+            Enqueue(padB_queue, popped_job);
+            pthread_mutex_unlock(&padB_mutex);
+            NextJobID_B = popped_job.ID;
+            pthread_cond_broadcast(&id_cv);
+            fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+            popped_job.ID,
+            'L',
+            popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 2,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
+            'B');
+          }
+            else if(!isEmpty(padA_queue) && !isEmpty(padB_queue)){
+              int waiting_time_A = (padA_queue->head->data.type ==1) ? 2 : 4;
+              int waiting_time_B = (padB_queue->head->data.type ==1) ? 2 : 12;
+              if (waiting_time_A > waiting_time_B ){
+                pthread_sleep(waiting_time_A);
+              pthread_mutex_lock(&land_queue_mutex);
+              Job popped_job = Dequeue(land_queue);
+              pthread_mutex_unlock(&land_queue_mutex);
+              pthread_mutex_lock(&padA_mutex);
+              Enqueue(padA_queue, popped_job);
+              pthread_mutex_unlock(&padA_mutex);
+              NextJobID_A = popped_job.ID;
+              pthread_cond_broadcast(&id_cv);
+              fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+              popped_job.ID,
+              'L',
+              popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 2,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
+              'A');
+                }
+              
+            else{
+              pthread_sleep(waiting_time_B);
+              pthread_mutex_lock(&land_queue_mutex);
+              Job popped_job = Dequeue(land_queue);
+              pthread_mutex_unlock(&land_queue_mutex);
+              pthread_mutex_lock(&padB_mutex);
+              Enqueue(padA_queue, popped_job);
+              pthread_mutex_unlock(&padB_mutex);
+              NextJobID_B = popped_job.ID;
+              pthread_cond_broadcast(&id_cv);
+              fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+              popped_job.ID,
+              'L',
+              popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 2,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
+              'B');
+            }
+          }
+          else{
+              pthread_mutex_lock(&land_queue_mutex);
+              Job popped_job = Dequeue(land_queue);
+              pthread_mutex_unlock(&land_queue_mutex);
+              pthread_mutex_lock(&padA_mutex);
+              Enqueue(padA_queue, popped_job);
+              pthread_mutex_unlock(&padA_mutex);
+              NextJobID_A = popped_job.ID;
+              pthread_cond_broadcast(&id_cv);
+              fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+              popped_job.ID,
+              'L',
+              popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 2,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
+              'A');
+          
+      }
+}
+      else if (!isEmpty(launch_queue)){
+        if(!isEmpty(padA_queue)){
+          int waiting_time_A = (padA_queue->head->data.type ==1) ? 2 : 4;
+          pthread_sleep(waiting_time_A);
+          }
+        else{
+        pthread_mutex_lock(&launch_queue_mutex);
+        Job popped_job = Dequeue(launch_queue);
+        pthread_mutex_unlock(&launch_queue_mutex);
+        NextJobID_A = popped_job.ID;
+        pthread_mutex_lock(&padA_mutex);
+              Enqueue(padA_queue, popped_job);
+              pthread_mutex_unlock(&padA_mutex);
       pthread_cond_broadcast(&id_cv);
       fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
       popped_job.ID,
       'D',
       popped_job.request_time.tv_sec - start_time.tv_sec,
-                    current_time_ct.tv_sec - start_time.tv_sec + 2,
-                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 2,
+                    current_time_ct.tv_sec - start_time.tv_sec + 4,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 4,
             'A');
+    } }
+    if (isEmpty(land_queue) && !isEmpty(assembly_queue)){
+        if(!isEmpty(padB_queue)){
+          int waiting_time_B = (padB_queue->head->data.type ==1) ? 2 : 12;
+          pthread_sleep(waiting_time_B);
+          }
+        else{
+        pthread_mutex_lock(&assembly_queue_mutex);
+        Job popped_job = Dequeue(assembly_queue);
+        pthread_mutex_unlock(&assembly_queue_mutex);
+        NextJobID_B = popped_job.ID;
+        pthread_mutex_lock(&padB_mutex);
+        Enqueue(padB_queue, popped_job);
+        pthread_mutex_unlock(&padB_mutex);
+      pthread_cond_broadcast(&id_cv);
+      fprintf(events_log,   "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+      popped_job.ID,
+      'A',
+      popped_job.request_time.tv_sec - start_time.tv_sec,
+                    current_time_ct.tv_sec - start_time.tv_sec + 12,
+                    current_time_ct.tv_sec - popped_job.request_time.tv_sec + 12,
+            'B');
     }
-    //TODO: else if assembly in pad b
-    //update time
-    gettimeofday(&current_time_ct, NULL);
+      }
+      gettimeofday(&current_time_ct, NULL);
     }
     
  pthread_exit(NULL);
 }
+
+
