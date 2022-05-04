@@ -258,6 +258,7 @@ void* PadA(void *arg){
       if(!isEmpty(padA_queue)){
         //pthread_mutex_unlock(&padA_queue_mutex);
         int job_type = padA_queue->head->data.type;
+        pthread_mutex_unlock(&padA_queue_mutex);
         if(job_type == 2) {
           struct timeval finishedWaiting;
           gettimeofday(&finishedWaiting, NULL);
@@ -273,7 +274,7 @@ void* PadA(void *arg){
         pthread_sleep(wait_time);
         //once job is done:
         gettimeofday(&current_time, NULL);
-        //pthread_mutex_lock(&padA_queue_mutex);
+        pthread_mutex_lock(&padA_queue_mutex);
         Job done = Dequeue(padA_queue);
         char status = (job_type==1) ? 'L': 'D';
         pthread_mutex_unlock(&padA_queue_mutex);
@@ -311,6 +312,7 @@ void* PadB(void *arg){
       if(!isEmpty(padB_queue)){
         //pthread_mutex_unlock(&padB_queue_mutex);
         int job_type = padB_queue->head->data.type;
+        pthread_mutex_unlock(&padB_queue_mutex);
         if(job_type == 3) {
           struct timeval finishedWaiting;
           gettimeofday(&finishedWaiting, NULL);
@@ -327,7 +329,7 @@ void* PadB(void *arg){
         pthread_sleep(wait_time);
         gettimeofday(&current_time, NULL);
         //once job is done:
-        //pthread_mutex_lock(&padB_queue_mutex);
+        pthread_mutex_lock(&padB_queue_mutex);
         Job done = Dequeue(padB_queue);
         char status = (job_type==1) ? 'L': 'A';
         pthread_mutex_unlock(&padB_queue_mutex);
