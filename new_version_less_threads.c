@@ -120,6 +120,11 @@ int main(int argc,char **argv){
     // your code goes here
     fprintf(events_log,"close created\n");
     fclose(events_log);
+    DestructQueue(land_queue);
+    DestructQueue(launch_queue);
+    DestructQueue(assembly_queue);
+    DestructQueue(padA_queue);
+    DestructQueue(padB_queue);
     return 0;
 }
 
@@ -223,17 +228,17 @@ void* PadA(void *arg){
       pthread_mutex_lock(&padA_queue_mutex);
       //if there is an job is in pad A than do not need to control until it is done
       if(!isEmpty(padA_queue)){
-        pthread_mutex_unlock(&padA_queue_mutex);
+        //pthread_mutex_unlock(&padA_queue_mutex);
         int job_type = padA_queue->head->data.type;
         //if landing then 1 if launch 2
         int wait_time = (job_type == 1)? 2:4;
         pthread_sleep(wait_time);
         //once job is done:
         gettimeofday(&current_time, NULL);
-        pthread_mutex_lock(&padA_queue_mutex);
+        //pthread_mutex_lock(&padA_queue_mutex);
         Job done = Dequeue(padA_queue);
-        pthread_mutex_unlock(&padA_queue_mutex);
         char status = (job_type==1) ? 'L': 'D';
+        pthread_mutex_unlock(&padA_queue_mutex);
         fprintf(events_log,  "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
               done.ID,
               status,
@@ -259,17 +264,17 @@ void* PadB(void *arg){
       pthread_mutex_lock(&padB_queue_mutex);
       //if there is an job is in pad B than do not need to control until it is done
       if(!isEmpty(padB_queue)){
-        pthread_mutex_unlock(&padB_queue_mutex);
+        //pthread_mutex_unlock(&padB_queue_mutex);
         int job_type = padB_queue->head->data.type;
         //if landing then 1 if assembly then 3
         int wait_time = (job_type == 1)? 2:12;
         pthread_sleep(wait_time);
         gettimeofday(&current_time, NULL);
         //once job is done:
-        pthread_mutex_lock(&padB_queue_mutex);
+        //pthread_mutex_lock(&padB_queue_mutex);
         Job done = Dequeue(padB_queue);
-        pthread_mutex_unlock(&padB_queue_mutex);
         char status = (job_type==1) ? 'L': 'A';
+        pthread_mutex_unlock(&padB_queue_mutex);
         fprintf(events_log,  "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
               done.ID,
               status,
@@ -306,23 +311,7 @@ void* ControlTower(void *arg){
         pthread_mutex_lock(&padB_queue_mutex);
         if (isEmpty(padA_queue) && isEmpty(padB_queue)){
           fprintf(events_log,"both of them are empty\n");
-          //if there is 2+ land jobs then execute both
-          if(land_queue->size >= 2){
-            pthread_mutex_lock(&land_queue_mutex);
-            Job j1 = Dequeue(land_queue);
-            pthread_mutex_unlock(&land_queue_mutex);
-            //pthread_mutex_lock(&padA_queue_mutex);
-            Enqueue(padA_queue, j1);
-            //pthread_mutex_unlock(&padA_queue_mutex);
-            pthread_mutex_lock(&land_queue_mutex);
-            Job j2 = Dequeue(land_queue);
-            pthread_mutex_unlock(&land_queue_mutex);
-            //pthread_mutex_lock(&padB_queue_mutex);
-            Enqueue(padB_queue, j2);
-            //pthread_mutex_unlock(&padB_queue_mutex);
-          }
           //choose pad A or pad B randomly
-          else{
             Job j = Dequeue(land_queue);
             double rand_pad = (double)rand() / (double) RAND_MAX;
             if (rand_pad < 0.5){
@@ -335,7 +324,6 @@ void* ControlTower(void *arg){
               Enqueue(padB_queue, j);
               //pthread_mutex_unlock(&padB_queue_mutex);
             }
-          }
         }
         else if (isEmpty(padA_queue)){
             pthread_mutex_lock(&land_queue_mutex);
@@ -353,15 +341,7 @@ void* ControlTower(void *arg){
             Enqueue(padB_queue, j);
             //pthread_mutex_unlock(&padB_queue_mutex);
         }
-          //TODO: CHOOSE THE ONE WITH LESS WAITING TIME
-        else{
-            pthread_mutex_lock(&land_queue_mutex);
-            Job j = Dequeue(land_queue);
-            pthread_mutex_unlock(&land_queue_mutex);
-            //pthread_mutex_lock(&padB_queue_mutex);
-            Enqueue(padB_queue, j);
-            //pthread_mutex_unlock(&padB_queue_mutex);
-        }
+        //if none is empty wait for next iteration and one is empty
         pthread_mutex_unlock(&padA_queue_mutex);
         pthread_mutex_unlock(&padB_queue_mutex);
       }
@@ -369,32 +349,34 @@ void* ControlTower(void *arg){
       else{
         //fprintf(events_log,"land is empty\n");
         pthread_mutex_unlock(&land_queue_mutex);
+        //LAUNCH JOB
         pthread_mutex_lock(&launch_queue_mutex);
         if (!isEmpty(launch_queue)){
-          pthread_mutex_unlock(&launch_queue_mutex);
+          //pthread_mutex_unlock(&launch_queue_mutex);
           pthread_mutex_lock(&padA_queue_mutex);
           if(isEmpty(padA_queue)){
-            pthread_mutex_lock(&launch_queue_mutex);
+            //pthread_mutex_lock(&launch_queue_mutex);
             Job j = Dequeue(launch_queue);
-            pthread_mutex_unlock(&launch_queue_mutex);
+            //pthread_mutex_unlock(&launch_queue_mutex);
             //pthread_mutex_lock(&padA_queue_mutex);
             Enqueue(padA_queue, j);
-            pthread_mutex_unlock(&padA_queue_mutex);
           }
+          pthread_mutex_unlock(&padA_queue_mutex);
         }
         pthread_mutex_unlock(&launch_queue_mutex);
+        //ASSEMBLY JOB
         pthread_mutex_lock(&assembly_queue_mutex);
         if (!isEmpty(assembly_queue)){
-          pthread_mutex_unlock(&assembly_queue_mutex);
+          //pthread_mutex_unlock(&assembly_queue_mutex);
           pthread_mutex_lock(&padB_queue_mutex);
           if(isEmpty(padB_queue)){
-            pthread_mutex_lock(&assembly_queue_mutex);
+           // pthread_mutex_lock(&assembly_queue_mutex);
             Job j = Dequeue(assembly_queue);
-            pthread_mutex_unlock(&assembly_queue_mutex);
+           // pthread_mutex_unlock(&assembly_queue_mutex);
             //pthread_mutex_lock(&padB_queue_mutex);
             Enqueue(padB_queue, j);
-            pthread_mutex_unlock(&padB_queue_mutex);
           }
+          pthread_mutex_unlock(&padB_queue_mutex);
         }
         pthread_mutex_unlock(&assembly_queue_mutex);
       }
