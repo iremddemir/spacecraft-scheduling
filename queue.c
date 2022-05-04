@@ -107,3 +107,33 @@ int isEmpty(Queue* pQueue) {
         return FALSE;
     }
 }
+
+int printQueue(Queue *pQueue, long second, int type){
+  //LANDING QUEUE
+  if (type == 1){
+    printf("At %ld landing queue :", second);
+  }
+  //LAUNCH QUEUE
+  if (type == 2){
+    printf("At %ld launch queue :", second);
+  }
+  //ASSEMBLY QUEUE
+  if (type == 3){
+    printf("At %ld assembly queue :", second);
+  }
+  if (pQueue== NULL){
+    printf("NULL QUEUE\n");
+  }
+  else if (pQueue->size == 0){
+    printf("Empty Queue\n");
+  }
+  else{
+    NODE* start = pQueue->head;
+    while(start != NULL){
+      printf(" %d,", start->data.ID);
+      start = start->prev;
+    }
+    printf("\n");
+  }
+  
+}

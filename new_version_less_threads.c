@@ -9,8 +9,8 @@
 int simulationTime = 120;    // simulation time
 int seed = 10;               // seed for randomness
 int emergencyFrequency = 40; // frequency of emergency
-float p = 0.5;               // probability of a ground job (launch & assembly)
-
+float p = 0.2;               // probability of a ground job (launch & assembly)
+int n = 30; //set n if it does not given in arguments
 //time related variables
 struct timeval start_time;
 struct timeval current_time;
@@ -49,9 +49,10 @@ pthread_mutex_t assembly_queue_mutex =PTHREAD_MUTEX_INITIALIZER;
 //mutexes for pad queues
 pthread_mutex_t padA_queue_mutex =PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t padB_queue_mutex =PTHREAD_MUTEX_INITIALIZER;
+//queue log mutex
+pthread_mutex_t print_mutex = PTHREAD_MUTEX_INITIALIZER;
 //logging file
 FILE *events_log;
-
 void* LandingJob(void *arg);
 void* LaunchJob(void *arg);
 void* EmergencyJob(void *arg);
@@ -96,6 +97,7 @@ int main(int argc,char **argv){
         if(!strcmp(argv[i], "-p")) {p = atof(argv[++i]);}
         else if(!strcmp(argv[i], "-t")) {simulationTime = atoi(argv[++i]);}
         else if(!strcmp(argv[i], "-s"))  {seed = atoi(argv[++i]);}
+        else if(!strcmp(argv[i], "-n"))  {n = atoi(argv[++i]);}
     }
     //get current, start end times decide the end time in   seconds
     gettimeofday(&current_time, NULL);
@@ -105,8 +107,7 @@ int main(int argc,char **argv){
     srand(seed); // feed the seed
     //logging
     events_log = fopen("./events.log", "w");
-    fprintf(events_log,"EventID\tStatus\tRequest Time\tEnd Time\tTurnaround           Time\tPad\n");
-
+    fprintf(events_log,"EventID\tStatus\tRequest Time\tEnd Time\tTurnaround Time\tPad\n");
     //Initialize queues for each job type and for pad A and B
     launch_queue = ConstructQueue(1000);
     land_queue = ConstructQueue(1000);
@@ -123,6 +124,7 @@ int main(int argc,char **argv){
     pthread_create(&padA_thread, NULL, PadA,NULL);
     pthread_create(&padB_thread, NULL, PadB,NULL);
     fprintf(events_log,"threads created\n");
+    
     //join threads for synch (given in documentation)
     pthread_join(landing_thread, NULL);
     pthread_join(launch_thread, NULL);
@@ -130,9 +132,9 @@ int main(int argc,char **argv){
     pthread_join(ct_thread, NULL);
     pthread_join(padA_thread, NULL);
     pthread_join(padB_thread, NULL);
-    fprintf(events_log,"joins created\n");
+    //fprintf(events_log,"joins created\n");
     // your code goes here
-    fprintf(events_log,"close created\n");
+    //fprintf(events_log,"close created\n");
     fclose(events_log);
     DestructQueue(land_queue);
     DestructQueue(launch_queue);
@@ -166,6 +168,11 @@ void* LandingJob(void *arg){
       }
       //t=2 as given in instructions
       pthread_sleep(2);
+            if((current_time.tv_sec - start_sc) % n == 0 && (current_time.tv_sec - start_sc) >= n){
+        pthread_mutex_lock(&print_mutex);
+        printQueue(land_queue, current_time.tv_sec - start_sc, 1);
+        pthread_mutex_unlock(&print_mutex);
+      }
       //update current time
       gettimeofday(&current_time, NULL);
     }
@@ -198,6 +205,11 @@ void* LaunchJob(void *arg){
       }
       //t=2 as given in instructions
       pthread_sleep(2);
+      if((current_time.tv_sec - start_sc) % n == 0 && (current_time.tv_sec - start_sc) >= n){
+        pthread_mutex_lock(&print_mutex);
+        printQueue(launch_queue, current_time.tv_sec - start_sc, 2);
+        pthread_mutex_unlock(&print_mutex);
+      }
       //update current time
       gettimeofday(&current_time, NULL);
     }
@@ -234,6 +246,11 @@ void* AssemblyJob(void *arg){
         fprintf(events_log,"Assembly created\n");
       }
       //t=2 as given in instructions
+      if((current_time.tv_sec - start_sc) % n == 0 && (current_time.tv_sec - start_sc) >= n){
+        pthread_mutex_lock(&print_mutex);
+        printQueue(assembly_queue, current_time.tv_sec - start_sc, 3);
+        pthread_mutex_unlock(&print_mutex);
+      }
       pthread_sleep(2);
       //update current time
       gettimeofday(&current_time, NULL);
