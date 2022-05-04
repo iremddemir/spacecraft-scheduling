@@ -126,7 +126,6 @@ int main(int argc,char **argv){
 // Landing Job Thread that controls all land jobs
 //assume this is type 1
 void* LandingJob(void *arg){
-    fprintf(events_log,"inside L\n");
     struct timeval current_time;
     gettimeofday(&current_time, NULL);
     //create landing job until time is out with probability 1-p
@@ -144,6 +143,7 @@ void* LandingJob(void *arg){
         pthread_mutex_lock(&land_queue_mutex);
         Enqueue(land_queue, landing);
         pthread_mutex_unlock(&land_queue_mutex);
+        fprintf(events_log,"Landing created\n");
       }
       //t=2 as given in instructions
       pthread_sleep(2);
@@ -155,13 +155,11 @@ void* LandingJob(void *arg){
 
 // Launch Job Thread that controls all launch jobs
 void* LaunchJob(void *arg){
-  //fprintf(events_log,"inside D\n");
     struct timeval current_time;
     gettimeofday(&current_time, NULL);
     //create launch job until time is out with probability p/2
     double rand_p;
     while (current_time.tv_sec < end_sc){
-      //fprintf(events_log,"inside D while\n");
       rand_p = (double)rand() / (double) RAND_MAX;
       if(rand_p < p/2){
         Job launch;
@@ -173,6 +171,7 @@ void* LaunchJob(void *arg){
         pthread_mutex_lock(&launch_queue_mutex);
         Enqueue(launch_queue, launch);
         pthread_mutex_unlock(&launch_queue_mutex);
+        fprintf(events_log,"Launch created\n");
       }
       //t=2 as given in instructions
       pthread_sleep(2);
@@ -189,13 +188,11 @@ void* EmergencyJob(void *arg){
 
 // Assembly Job Thread that controls all assembly jobs
 void* AssemblyJob(void *arg){
-    //fprintf(events_log,"inside A\n");
     struct timeval current_time;
     gettimeofday(&current_time, NULL);
     //create assembly job until time is out with probability p/2
     double rand_p;
     while (current_time.tv_sec < end_sc){
-      //fprintf(events_log,"inside A while\n");
       rand_p = (double)rand() / (double) RAND_MAX;
       if(rand_p< p/2){
         Job assembly;
@@ -207,6 +204,7 @@ void* AssemblyJob(void *arg){
         pthread_mutex_lock(&assembly_queue_mutex);
         Enqueue(assembly_queue, assembly);
         pthread_mutex_unlock(&assembly_queue_mutex);
+        fprintf(events_log,"Assembly created\n");
       }
       //t=2 as given in instructions
       pthread_sleep(2);
@@ -239,15 +237,13 @@ void* PadA(void *arg){
         fprintf(events_log,  "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
               done.ID,
               status,
-              done.request_time.tv_sec - start_time.tv_sec,
-              current_time.tv_sec - start_time.tv_sec,
+              done.request_time.tv_sec - start_sc,
+              current_time.tv_sec - start_sc,
               current_time.tv_sec - done.request_time.tv_sec,
               'A');
       }
       else {
           pthread_mutex_unlock(&padA_queue_mutex);
-          //sleep for 2 second since t=2 given
-          pthread_sleep(2);
       }
       gettimeofday(&current_time, NULL);
   }
@@ -284,8 +280,8 @@ void* PadB(void *arg){
       }
       else {
           pthread_mutex_unlock(&padB_queue_mutex);
-          //sleep for 2 second since t=2 given
-          pthread_sleep(2);
+          //sleep for 2 second since t=2 given there might be a new job generated
+         
       }
       gettimeofday(&current_time, NULL);
   }
@@ -306,36 +302,38 @@ void* ControlTower(void *arg){
         //fprintf(events_log,"land is not empty\n");
         pthread_mutex_unlock(&land_queue_mutex);
         //if both is available
+        pthread_mutex_lock(&padA_queue_mutex);
+        pthread_mutex_lock(&padB_queue_mutex);
         if (isEmpty(padA_queue) && isEmpty(padB_queue)){
-         // fprintf(events_log,"both of them are empty\n");
+          fprintf(events_log,"both of them are empty\n");
           //if there is 2+ land jobs then execute both
           if(land_queue->size >= 2){
             pthread_mutex_lock(&land_queue_mutex);
             Job j1 = Dequeue(land_queue);
             pthread_mutex_unlock(&land_queue_mutex);
-            pthread_mutex_lock(&padA_queue_mutex);
+            //pthread_mutex_lock(&padA_queue_mutex);
             Enqueue(padA_queue, j1);
-            pthread_mutex_unlock(&padA_queue_mutex);
+            //pthread_mutex_unlock(&padA_queue_mutex);
             pthread_mutex_lock(&land_queue_mutex);
             Job j2 = Dequeue(land_queue);
             pthread_mutex_unlock(&land_queue_mutex);
-            pthread_mutex_lock(&padB_queue_mutex);
+            //pthread_mutex_lock(&padB_queue_mutex);
             Enqueue(padB_queue, j2);
-            pthread_mutex_unlock(&padB_queue_mutex);
+            //pthread_mutex_unlock(&padB_queue_mutex);
           }
           //choose pad A or pad B randomly
           else{
             Job j = Dequeue(land_queue);
             double rand_pad = (double)rand() / (double) RAND_MAX;
             if (rand_pad < 0.5){
-              pthread_mutex_lock(&padA_queue_mutex);
+              //pthread_mutex_lock(&padA_queue_mutex);
               Enqueue(padA_queue, j);
-              pthread_mutex_unlock(&padA_queue_mutex);
+              //pthread_mutex_unlock(&padA_queue_mutex);
             }
             else{
-              pthread_mutex_lock(&padB_queue_mutex);
+             // pthread_mutex_lock(&padB_queue_mutex);
               Enqueue(padB_queue, j);
-              pthread_mutex_unlock(&padB_queue_mutex);
+              //pthread_mutex_unlock(&padB_queue_mutex);
             }
           }
         }
@@ -343,27 +341,29 @@ void* ControlTower(void *arg){
             pthread_mutex_lock(&land_queue_mutex);
             Job j = Dequeue(land_queue);
             pthread_mutex_unlock(&land_queue_mutex);
-            pthread_mutex_lock(&padA_queue_mutex);
+            //pthread_mutex_lock(&padA_queue_mutex);
             Enqueue(padA_queue, j);
-            pthread_mutex_unlock(&padA_queue_mutex);
+            //pthread_mutex_unlock(&padA_queue_mutex);
         }
         else if(isEmpty(padB_queue)){
             pthread_mutex_lock(&land_queue_mutex);
             Job j = Dequeue(land_queue);
             pthread_mutex_unlock(&land_queue_mutex);
-            pthread_mutex_lock(&padB_queue_mutex);
+            //pthread_mutex_lock(&padB_queue_mutex);
             Enqueue(padB_queue, j);
-            pthread_mutex_unlock(&padB_queue_mutex);
+            //pthread_mutex_unlock(&padB_queue_mutex);
         }
           //TODO: CHOOSE THE ONE WITH LESS WAITING TIME
         else{
             pthread_mutex_lock(&land_queue_mutex);
             Job j = Dequeue(land_queue);
             pthread_mutex_unlock(&land_queue_mutex);
-            pthread_mutex_lock(&padB_queue_mutex);
+            //pthread_mutex_lock(&padB_queue_mutex);
             Enqueue(padB_queue, j);
-            pthread_mutex_unlock(&padB_queue_mutex);
+            //pthread_mutex_unlock(&padB_queue_mutex);
         }
+        pthread_mutex_unlock(&padA_queue_mutex);
+        pthread_mutex_unlock(&padB_queue_mutex);
       }
       //if no job in the land queue
       else{
@@ -377,7 +377,7 @@ void* ControlTower(void *arg){
             pthread_mutex_lock(&launch_queue_mutex);
             Job j = Dequeue(launch_queue);
             pthread_mutex_unlock(&launch_queue_mutex);
-            pthread_mutex_lock(&padA_queue_mutex);
+            //pthread_mutex_lock(&padA_queue_mutex);
             Enqueue(padA_queue, j);
             pthread_mutex_unlock(&padA_queue_mutex);
           }
@@ -391,7 +391,7 @@ void* ControlTower(void *arg){
             pthread_mutex_lock(&assembly_queue_mutex);
             Job j = Dequeue(assembly_queue);
             pthread_mutex_unlock(&assembly_queue_mutex);
-            pthread_mutex_lock(&padB_queue_mutex);
+            //pthread_mutex_lock(&padB_queue_mutex);
             Enqueue(padB_queue, j);
             pthread_mutex_unlock(&padB_queue_mutex);
           }
@@ -403,5 +403,6 @@ void* ControlTower(void *arg){
 
   pthread_exit(NULL);
 }
+
 
 
