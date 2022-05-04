@@ -29,9 +29,6 @@ int pad_b_priority = 1;
 pthread_mutex_t max_wait_mutex = PTHREAD_MUTEX_INITIALIZER;
 int maxWaitTime = 0;
 
-pthread_mutex_t land_counter_mutex = PTHREAD_MUTEX_INITIALIZER;
-int landCount = 0;
-
 //job queues:
 Queue* launch_queue;
 Queue* land_queue;
@@ -197,10 +194,6 @@ void* LaunchJob(void *arg){
         pthread_mutex_lock(&launch_queue_mutex);
         Enqueue(launch_queue, launch);
         pthread_mutex_unlock(&launch_queue_mutex);
-        pthread_mutex_lock(&land_counter_mutex);
-        landCount++;
-        pthread_mutex_unlock(&land_counter_mutex);
-        printf("Current land count: %d\n", landCount);
         fprintf(events_log,"Launch created\n");
       }
       //t=2 as given in instructions
@@ -239,10 +232,6 @@ void* AssemblyJob(void *arg){
         pthread_mutex_lock(&assembly_queue_mutex);
         Enqueue(assembly_queue, assembly);
         pthread_mutex_unlock(&assembly_queue_mutex);
-        pthread_mutex_lock(&land_counter_mutex);
-        landCount++;
-        pthread_mutex_unlock(&land_counter_mutex);
-        printf("Current land count: %d\n", landCount);
         fprintf(events_log,"Assembly created\n");
       }
       //t=2 as given in instructions
@@ -373,87 +362,108 @@ void* ControlTower(void *arg){
     //until time is done
     while(current_time.tv_sec < end_sc){
       //fprintf(events_log,"inside CT while\n");
-      //check if there is a job in land queue so lock it to be sure it will not be   changed during our control time
-      pthread_mutex_lock(&land_queue_mutex);
-      if (!isEmpty(land_queue)){
-        //release land_queue since now I care only about head and only one thread          deals with it
-        //fprintf(events_log,"land is not empty\n");
-        pthread_mutex_unlock(&land_queue_mutex);
-        //if both is available
-        pthread_mutex_lock(&padA_queue_mutex);
-        pthread_mutex_lock(&padB_queue_mutex);
-        if (isEmpty(padA_queue) && isEmpty(padB_queue)){
-          fprintf(events_log,"both of them are empty\n");
-          //choose pad A or pad B randomly
-            Job j = Dequeue(land_queue);
-            double rand_pad = (double)rand() / (double) RAND_MAX;
-            if (rand_pad < 0.5){
-              //pthread_mutex_lock(&padA_queue_mutex);
-              Enqueue(padA_queue, j);
-              //pthread_mutex_unlock(&padA_queue_mutex);
-            }
-            else{
-             // pthread_mutex_lock(&padB_queue_mutex);
-              Enqueue(padB_queue, j);
-              //pthread_mutex_unlock(&padB_queue_mutex);
-            }
-        }
-        else if (isEmpty(padA_queue)){
-            pthread_mutex_lock(&land_queue_mutex);
-            Job j = Dequeue(land_queue);
+      // Check if pad A is busy or not
+      pthread_mutex_lock(&padA_queue_mutex);
+      if(isEmpty(padA_queue)) {
+        // If pad A is not busy, determine which task to assign
+        pthread_mutex_lock(&a_priority_mutex);
+        int priority = pad_a_priority;
+        if(priority == 1) {
+          // If landing has priority, we should determine if there are any landing jobs available
+          pthread_mutex_lock(&land_queue_mutex);
+          if(!isEmpty(land_queue)) {
+            Job currentJob = Dequeue(land_queue);
             pthread_mutex_unlock(&land_queue_mutex);
-            //pthread_mutex_lock(&padA_queue_mutex);
-            Enqueue(padA_queue, j);
-            //pthread_mutex_unlock(&padA_queue_mutex);
-        }
-        else if(isEmpty(padB_queue)){
-            pthread_mutex_lock(&land_queue_mutex);
-            Job j = Dequeue(land_queue);
+            Enqueue(padA_queue, currentJob);
+            pad_a_priority = 2;
+            pthread_mutex_unlock(&a_priority_mutex);
+          }
+          else {
             pthread_mutex_unlock(&land_queue_mutex);
-            //pthread_mutex_lock(&padB_queue_mutex);
-            Enqueue(padB_queue, j);
-            //pthread_mutex_unlock(&padB_queue_mutex);
-        }
-        //if none is empty wait for next iteration and one is empty
-        pthread_mutex_unlock(&padA_queue_mutex);
-        pthread_mutex_unlock(&padB_queue_mutex);
-      }
-      //if no job in the land queue
-      else{
-        //fprintf(events_log,"land is empty\n");
-        pthread_mutex_unlock(&land_queue_mutex);
-        //LAUNCH JOB
-        pthread_mutex_lock(&launch_queue_mutex);
-        if (!isEmpty(launch_queue)){
-          //pthread_mutex_unlock(&launch_queue_mutex);
-          pthread_mutex_lock(&padA_queue_mutex);
-          if(isEmpty(padA_queue)){
-            //pthread_mutex_lock(&launch_queue_mutex);
-            Job j = Dequeue(launch_queue);
-            //pthread_mutex_unlock(&launch_queue_mutex);
-            //pthread_mutex_lock(&padA_queue_mutex);
-            Enqueue(padA_queue, j);
+            pthread_mutex_unlock(&a_priority_mutex);
+            pthread_mutex_lock(&launch_queue_mutex);
+            if(!isEmpty(launch_queue)) {
+              Job currentJob = Dequeue(launch_queue);
+              pthread_mutex_unlock(&launch_queue_mutex);
+              Enqueue(padA_queue, currentJob);
+            }else
+              pthread_mutex_unlock(&launch_queue_mutex);
           }
-          pthread_mutex_unlock(&padA_queue_mutex);
         }
-        pthread_mutex_unlock(&launch_queue_mutex);
-        //ASSEMBLY JOB
-        pthread_mutex_lock(&assembly_queue_mutex);
-        if (!isEmpty(assembly_queue)){
-          //pthread_mutex_unlock(&assembly_queue_mutex);
-          pthread_mutex_lock(&padB_queue_mutex);
-          if(isEmpty(padB_queue)){
-           // pthread_mutex_lock(&assembly_queue_mutex);
-            Job j = Dequeue(assembly_queue);
-           // pthread_mutex_unlock(&assembly_queue_mutex);
-            //pthread_mutex_lock(&padB_queue_mutex);
-            Enqueue(padB_queue, j);
+        else if(priority == 2) {
+          pthread_mutex_lock(&launch_queue_mutex);
+          if(!isEmpty(launch_queue)) {
+            Job currentJob = Dequeue(launch_queue);
+            pthread_mutex_unlock(&launch_queue_mutex);
+            Enqueue(padA_queue, currentJob);
+            pad_a_priority = 1;
+            pthread_mutex_unlock(&a_priority_mutex);
           }
-          pthread_mutex_unlock(&padB_queue_mutex);
+          else {
+            pthread_mutex_unlock(&launch_queue_mutex);
+            pthread_mutex_unlock(&a_priority_mutex);
+            pthread_mutex_lock(&land_queue_mutex);
+            if(!isEmpty(land_queue)) {
+              Job currentJob = Dequeue(land_queue);
+              pthread_mutex_unlock(&land_queue_mutex);
+              Enqueue(padA_queue, currentJob);
+            }else
+              pthread_mutex_unlock(&land_queue_mutex);
+          }
         }
-        pthread_mutex_unlock(&assembly_queue_mutex);
       }
-    gettimeofday(&current_time, NULL);
+      pthread_mutex_unlock(&padA_queue_mutex);
+      pthread_mutex_lock(&padB_queue_mutex);
+      if(isEmpty(padB_queue)) {
+        // If pad A is not busy, determine which task to assign
+        pthread_mutex_lock(&b_priority_mutex);
+        int priority = pad_b_priority;
+        if(priority == 1) {
+          // If landing has priority, we should determine if there are any landing jobs available
+          pthread_mutex_lock(&land_queue_mutex);
+          if(!isEmpty(land_queue)) {
+            Job currentJob = Dequeue(land_queue);
+            pthread_mutex_unlock(&land_queue_mutex);
+            Enqueue(padB_queue, currentJob);
+            pad_b_priority = 3;
+            pthread_mutex_unlock(&b_priority_mutex);
+          }
+          else {
+            pthread_mutex_unlock(&land_queue_mutex);
+            pthread_mutex_unlock(&b_priority_mutex);
+            pthread_mutex_lock(&assembly_queue_mutex);
+            if(!isEmpty(assembly_queue)) {
+              Job currentJob = Dequeue(assembly_queue);
+              pthread_mutex_unlock(&assembly_queue_mutex);
+              Enqueue(padB_queue, currentJob);
+            }else
+              pthread_mutex_unlock(&assembly_queue_mutex);
+          }
+        }
+        else if(priority == 3) {
+          pthread_mutex_lock(&assembly_queue_mutex);
+          if(!isEmpty(assembly_queue)) {
+            Job currentJob = Dequeue(assembly_queue);
+            pthread_mutex_unlock(&assembly_queue_mutex);
+            Enqueue(padB_queue, currentJob);
+            pad_a_priority = 1;
+            pthread_mutex_unlock(&b_priority_mutex);
+          }
+          else {
+            pthread_mutex_unlock(&assembly_queue_mutex);
+            pthread_mutex_unlock(&b_priority_mutex);
+            pthread_mutex_lock(&land_queue_mutex);
+            if(!isEmpty(land_queue)) {
+              Job currentJob = Dequeue(land_queue);
+              pthread_mutex_unlock(&land_queue_mutex);
+              Enqueue(padA_queue, currentJob);
+            }else
+              pthread_mutex_unlock(&land_queue_mutex);
+          }
+        }
+      }
+      pthread_mutex_unlock(&padB_queue_mutex);
+      gettimeofday(&current_time, NULL);
     }
   fprintf(events_log, "Maximum waiting time: %d\n", maxWaitTime);
   pthread_exit(NULL);
