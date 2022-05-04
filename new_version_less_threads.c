@@ -163,12 +163,12 @@ void* LaunchJob(void *arg){
     while (current_time.tv_sec < end_sc){
       //fprintf(events_log,"inside D while\n");
       rand_p = (double)rand() / (double) RAND_MAX;
-      if(0 <rand_p <= p/2){
+      if(rand_p < p/2){
         Job launch;
         pthread_mutex_lock(&id_mutex);
         launch.ID = JobID++;
         pthread_mutex_unlock(&id_mutex);
-        launch.type = 1;
+        launch.type = 2;
         launch.request_time = current_time;
         pthread_mutex_lock(&launch_queue_mutex);
         Enqueue(launch_queue, launch);
@@ -197,12 +197,12 @@ void* AssemblyJob(void *arg){
     while (current_time.tv_sec < end_sc){
       //fprintf(events_log,"inside A while\n");
       rand_p = (double)rand() / (double) RAND_MAX;
-      if(p/2<rand_p<= p){
+      if(rand_p< p/2){
         Job assembly;
         pthread_mutex_lock(&id_mutex);
         assembly.ID = JobID++;
         pthread_mutex_unlock(&id_mutex);
-        assembly.type = 1;
+        assembly.type = 3;
         assembly.request_time = current_time;
         pthread_mutex_lock(&assembly_queue_mutex);
         Enqueue(assembly_queue, assembly);
@@ -367,7 +367,7 @@ void* ControlTower(void *arg){
       }
       //if no job in the land queue
       else{
-        fprintf(events_log,"land is empty\n");
+        //fprintf(events_log,"land is empty\n");
         pthread_mutex_unlock(&land_queue_mutex);
         pthread_mutex_lock(&launch_queue_mutex);
         if (!isEmpty(launch_queue)){
