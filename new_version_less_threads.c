@@ -67,6 +67,7 @@ void *AssemblyJob(void *arg);
 void *ControlTower(void *arg);
 void *PadA(void *arg);
 void *PadB(void *arg);
+void *SnapShotPrint(void *arg);
 // pthread sleeper function
 int pthread_sleep(int seconds)
 {
@@ -139,7 +140,7 @@ int main(int argc, char **argv)
   padB_queue = ConstructQueue(1000);
   fprintf(events_log, "queues created\n");
   // Create Control Tower and one thread that is responsible for one job type for each job type
-  pthread_t ct_thread, emergency_thread, landing_thread, launch_thread, assembly_thread, padA_thread, padB_thread;
+  pthread_t ct_thread, snapshot_thread, emergency_thread, landing_thread, launch_thread, assembly_thread, padA_thread, padB_thread;
   pthread_create(&landing_thread, NULL, LandingJob, NULL);
   pthread_create(&launch_thread, NULL, LaunchJob, NULL);
   pthread_create(&assembly_thread, NULL, AssemblyJob, NULL);
@@ -147,6 +148,7 @@ int main(int argc, char **argv)
   pthread_create(&ct_thread, NULL, ControlTower, NULL);
   pthread_create(&padA_thread, NULL, PadA, NULL);
   pthread_create(&padB_thread, NULL, PadB, NULL);
+  pthread_create(&snapshot_thread, NULL, SnapShotPrint, NULL);
   fprintf(events_log, "threads created\n");
 
   // join threads for synch (given in documentation)
@@ -166,6 +168,24 @@ int main(int argc, char **argv)
   DestructQueue(padA_queue);
   DestructQueue(padB_queue);
   return 0;
+}
+
+//SnapShotPrint is a thread that  in every n seconds prints queues
+void* SnapShotPrint(void *arg){
+    struct timeval current_time;
+    gettimeofday(&current_time, NULL);
+    long sim_time = current_time.tv_sec - start_sc;
+    while (current_time.tv_sec < end_sc){
+      sim_time = current_time.tv_sec - start_sc;
+      //printf("%ld", sim_time % n);
+      if(n <= sim_time && ((int) sim_time %(int)n == 0)){
+        printQueue(land_queue, sim_time, 1);
+        printQueue(launch_queue, sim_time, 2);
+        printQueue(assembly_queue, sim_time, 3);
+      }
+      pthread_sleep(n);
+      gettimeofday(&current_time, NULL);
+      }
 }
 
 // Landing Job Thread that controls all land jobs
@@ -195,12 +215,6 @@ void *LandingJob(void *arg)
     }
     // t=2 as given in instructions
     pthread_sleep(2);
-    if ((current_time.tv_sec - start_sc) % n == 0 && (current_time.tv_sec - start_sc) >= n)
-    {
-      pthread_mutex_lock(&print_mutex);
-      printQueue(land_queue, current_time.tv_sec - start_sc, 1);
-      pthread_mutex_unlock(&print_mutex);
-    }
     // update current time
     gettimeofday(&current_time, NULL);
   }
@@ -232,12 +246,6 @@ void *LaunchJob(void *arg)
     }
     // t=2 as given in instructions
     pthread_sleep(2);
-    if ((current_time.tv_sec - start_sc) % n == 0 && (current_time.tv_sec - start_sc) >= n)
-    {
-      pthread_mutex_lock(&print_mutex);
-      printQueue(launch_queue, current_time.tv_sec - start_sc, 2);
-      pthread_mutex_unlock(&print_mutex);
-    }
     // update current time
     gettimeofday(&current_time, NULL);
   }
@@ -325,12 +333,6 @@ void *AssemblyJob(void *arg)
       fprintf(events_log, "Assembly created\n");
     }
     // t=2 as given in instructions
-    if ((current_time.tv_sec - start_sc) % n == 0 && (current_time.tv_sec - start_sc) >= n)
-    {
-      pthread_mutex_lock(&print_mutex);
-      printQueue(assembly_queue, current_time.tv_sec - start_sc, 3);
-      pthread_mutex_unlock(&print_mutex);
-    }
     pthread_sleep(2);
     // update current time
     gettimeofday(&current_time, NULL);
