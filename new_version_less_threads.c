@@ -9,7 +9,7 @@
 int simulationTime = 120;    // simulation time
 int seed = 10;               // seed for randomness
 int emergencyFrequency = 40; // frequency of emergency
-float p = 0.2;               // probability of a ground job (launch & assembly)
+float p = 0.5;               // probability of a ground job (launch & assembly)
 
 //time related variables
 struct timeval start_time;
@@ -17,6 +17,20 @@ struct timeval current_time;
 struct timeval current_time_ct;
 long start_sc;
 long end_sc;
+
+// Used for round robin for pads a and b. If one type has priority but the queue is 
+// empty, then the other can use it
+pthread_mutex_t a_priority_mutex = PTHREAD_MUTEX_INITIALIZER;
+int pad_a_priority = 1;
+
+pthread_mutex_t b_priority_mutex = PTHREAD_MUTEX_INITIALIZER;
+int pad_b_priority = 1;
+
+pthread_mutex_t max_wait_mutex = PTHREAD_MUTEX_INITIALIZER;
+int maxWaitTime = 0;
+
+pthread_mutex_t land_counter_mutex = PTHREAD_MUTEX_INITIALIZER;
+int landCount = 0;
 
 //job queues:
 Queue* launch_queue;
@@ -176,6 +190,10 @@ void* LaunchJob(void *arg){
         pthread_mutex_lock(&launch_queue_mutex);
         Enqueue(launch_queue, launch);
         pthread_mutex_unlock(&launch_queue_mutex);
+        pthread_mutex_lock(&land_counter_mutex);
+        landCount++;
+        pthread_mutex_unlock(&land_counter_mutex);
+        printf("Current land count: %d\n", landCount);
         fprintf(events_log,"Launch created\n");
       }
       //t=2 as given in instructions
@@ -209,6 +227,10 @@ void* AssemblyJob(void *arg){
         pthread_mutex_lock(&assembly_queue_mutex);
         Enqueue(assembly_queue, assembly);
         pthread_mutex_unlock(&assembly_queue_mutex);
+        pthread_mutex_lock(&land_counter_mutex);
+        landCount++;
+        pthread_mutex_unlock(&land_counter_mutex);
+        printf("Current land count: %d\n", landCount);
         fprintf(events_log,"Assembly created\n");
       }
       //t=2 as given in instructions
@@ -230,6 +252,16 @@ void* PadA(void *arg){
       if(!isEmpty(padA_queue)){
         //pthread_mutex_unlock(&padA_queue_mutex);
         int job_type = padA_queue->head->data.type;
+        if(job_type == 2) {
+          struct timeval finishedWaiting;
+          gettimeofday(&finishedWaiting, NULL);
+          int waitingTime = finishedWaiting.tv_sec - padA_queue->head->data.request_time.tv_sec;
+          pthread_mutex_lock(&max_wait_mutex);
+          if(waitingTime > maxWaitTime) {
+            maxWaitTime = waitingTime;
+          }
+          pthread_mutex_unlock(&max_wait_mutex);
+        }
         //if landing then 1 if launch 2
         int wait_time = (job_type == 1)? 2:4;
         pthread_sleep(wait_time);
@@ -239,7 +271,14 @@ void* PadA(void *arg){
         Job done = Dequeue(padA_queue);
         char status = (job_type==1) ? 'L': 'D';
         pthread_mutex_unlock(&padA_queue_mutex);
-        fprintf(events_log,  "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+        /*
+        if (job_type == 2) {
+          pthread_mutex_lock(&land_counter_mutex);
+          landCount--;
+          pthread_mutex_unlock(&land_counter_mutex);
+        }*/
+        
+        fprintf(events_log,  "%d\t\t%c\t\t%ld\t\t%ld\t\t%ld\t\t%c\n",
               done.ID,
               status,
               done.request_time.tv_sec - start_sc,
@@ -266,6 +305,17 @@ void* PadB(void *arg){
       if(!isEmpty(padB_queue)){
         //pthread_mutex_unlock(&padB_queue_mutex);
         int job_type = padB_queue->head->data.type;
+        if(job_type == 3) {
+          struct timeval finishedWaiting;
+          gettimeofday(&finishedWaiting, NULL);
+          int waitingTime = finishedWaiting.tv_sec - padB_queue->head->data.request_time.tv_sec;
+          printf("Waiting time: %d\n", waitingTime);
+          pthread_mutex_lock(&max_wait_mutex);
+          if(waitingTime > maxWaitTime) {
+            maxWaitTime = waitingTime;
+          }
+          pthread_mutex_unlock(&max_wait_mutex);
+        }
         //if landing then 1 if assembly then 3
         int wait_time = (job_type == 1)? 2:12;
         pthread_sleep(wait_time);
@@ -275,7 +325,13 @@ void* PadB(void *arg){
         Job done = Dequeue(padB_queue);
         char status = (job_type==1) ? 'L': 'A';
         pthread_mutex_unlock(&padB_queue_mutex);
-        fprintf(events_log,  "%d\t%c\t%ld\t%ld\t%ld\t%c\n",
+        /*
+        if (job_type ==3) {
+          pthread_mutex_lock(&land_counter_mutex);
+          landCount--;
+          pthread_mutex_unlock(&land_counter_mutex);
+        }*/
+        fprintf(events_log,  "%d\t\t%c\t\t%ld\t\t%ld\t\t%ld\t\t%c\n",
               done.ID,
               status,
               done.request_time.tv_sec - start_time.tv_sec,
@@ -382,7 +438,7 @@ void* ControlTower(void *arg){
       }
     gettimeofday(&current_time, NULL);
     }
-
+  fprintf(events_log, "Maximum waiting time: %d\n", maxWaitTime);
   pthread_exit(NULL);
 }
 
