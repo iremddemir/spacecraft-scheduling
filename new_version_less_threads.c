@@ -138,7 +138,7 @@ int main(int argc, char **argv)
   emergency_queue = ConstructQueue(1000);
   padA_queue = ConstructQueue(1000);
   padB_queue = ConstructQueue(1000);
-  fprintf(events_log, "queues created\n");
+  //fprintf(events_log, "queues created\n");
   // Create Control Tower and one thread that is responsible for one job type for each job type
   pthread_t ct_thread, snapshot_thread, emergency_thread, landing_thread, launch_thread, assembly_thread, padA_thread, padB_thread;
   pthread_create(&landing_thread, NULL, LandingJob, NULL);
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
   pthread_create(&padA_thread, NULL, PadA, NULL);
   pthread_create(&padB_thread, NULL, PadB, NULL);
   pthread_create(&snapshot_thread, NULL, SnapShotPrint, NULL);
-  fprintf(events_log, "threads created\n");
+  //fprintf(events_log, "threads created\n");
 
   // join threads for synch (given in documentation)
   pthread_join(landing_thread, NULL);
@@ -211,7 +211,7 @@ void *LandingJob(void *arg)
       pthread_mutex_lock(&land_queue_mutex);
       Enqueue(land_queue, landing);
       pthread_mutex_unlock(&land_queue_mutex);
-      fprintf(events_log, "Landing created\n");
+      //fprintf(events_log, "Landing created\n");
     }
     // t=2 as given in instructions
     pthread_sleep(2);
@@ -242,7 +242,7 @@ void *LaunchJob(void *arg)
       pthread_mutex_lock(&launch_queue_mutex);
       Enqueue(launch_queue, launch);
       pthread_mutex_unlock(&launch_queue_mutex);
-      fprintf(events_log, "Launch created\n");
+      //fprintf(events_log, "Launch created\n");
     }
     // t=2 as given in instructions
     pthread_sleep(2);
@@ -261,7 +261,7 @@ void *EmergencyJob(void *arg)
   while (current_time.tv_sec < end_sc)
   {
     if ((current_time.tv_sec - start_sc) % 40 == 0 && (current_time.tv_sec - start_sc) >= 40)
-    { 
+    {
       if(doneEmergency == 0) {
         Job emergency1;
         Job emergency2;
@@ -277,7 +277,7 @@ void *EmergencyJob(void *arg)
         Enqueue(emergency_queue, emergency1);
         Enqueue(emergency_queue, emergency2);
         pthread_mutex_unlock(&emergency_queue_mutex);
-        fprintf(events_log, "Emergencies created.\n");
+        //fprintf(events_log, "Emergencies created.\n");
         pthread_mutex_lock(&a_priority_mutex);
         pthread_mutex_lock(&prev_a_mutex);
         previous_a_priority = pad_a_priority;
@@ -292,7 +292,7 @@ void *EmergencyJob(void *arg)
         pthread_mutex_unlock(&prev_b_mutex);
         pthread_mutex_unlock(&b_priority_mutex);
         doneEmergency = 1;
-      }  
+      }
     }
     else {
       doneEmergency = 0;
@@ -330,7 +330,7 @@ void *AssemblyJob(void *arg)
       pthread_mutex_lock(&assembly_queue_mutex);
       Enqueue(assembly_queue, assembly);
       pthread_mutex_unlock(&assembly_queue_mutex);
-      fprintf(events_log, "Assembly created\n");
+      //fprintf(events_log, "Assembly created\n");
     }
     // t=2 as given in instructions
     pthread_sleep(2);
@@ -429,7 +429,7 @@ void *PadB(void *arg)
         struct timeval finishedWaiting;
         gettimeofday(&finishedWaiting, NULL);
         int waitingTime = finishedWaiting.tv_sec - padB_queue->head->data.request_time.tv_sec;
-        printf("Waiting time: %d\n", waitingTime);
+        //printf("Waiting time: %d\n", waitingTime);
         pthread_mutex_lock(&max_wait_mutex);
         if (waitingTime > maxWaitTime)
         {
@@ -645,6 +645,6 @@ void *ControlTower(void *arg)
     pthread_mutex_unlock(&padB_queue_mutex);
     gettimeofday(&current_time, NULL);
   }
-  fprintf(events_log, "Maximum waiting time: %d\n", maxWaitTime);
+  //fprintf(events_log, "Maximum waiting time: %d\n", maxWaitTime);
   pthread_exit(NULL);
 }
