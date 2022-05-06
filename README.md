@@ -3,7 +3,7 @@
 ### Andrew Bond, İrem Demir
 
 ## General Structure of Our Implementation:
-    **main:** argument parsing, storing time variables initially and creating queues, threads are done in here. Also, it starts event log with writing the header. Moreover, created threads are joined here as suggested in the documentation [1]. 
+   **main:** argument parsing, storing time variables initially and creating queues, threads are done in here. Also, it starts event log with writing the header. Moreover, created threads are joined here as suggested in the documentation [1]. 
     **LandingJob, LaunchJob, AssemblyJob, EmergencyJob:** thread functions that each responsible for specific job type. They create jobs with wanted probabilities in t seconds. They also decide the unique id for each job. This is made through incrementing a global variable. Since these may cause inconsistencies, a mutex is used for id creation. 
     **ControlTower:** thread function that is responsible for all traffic. We use this function to allocate jobs in a suitable pad. At the beginning we only consider one pad so, it was the one that does and logs the job. However, when we introduce pad B, we needed to differentiate between pads and jobs; therefore, we created two other threads as PadA and PadB. After this separation control tower got the responsibility of allocating job into one of them and doing and logging the job is now Pads’ responsibility.
     **PadA, PadB:** two threads for jobs in the pads. It performs the job (sleeps for needed time to job), clear its queue and waits for others to come. It also creates log information for a job that is done. 
