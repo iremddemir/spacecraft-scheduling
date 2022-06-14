@@ -1,6 +1,5 @@
 # Comp 304- Project 2 Spacecraft Control with Pthreads
-
-### Andrew Bond, İrem Demir
+Having benefited from scheduling, synchronisation, multi-threading, and deadlock prevention concepts, this project implements spacecraft control using POSIX-threads API.
 
 ## General Structure of Our Implementation:
    **main:** argument parsing, storing time variables initially and creating queues, threads are done in here. Also, it starts event log with writing the header. Moreover, created threads are joined here as suggested in the documentation [1]. 
